@@ -1484,13 +1484,27 @@ static int nct6775_update_pwm_limits(struct device *dev)
 	return 0;
 }
 
+static int nct6775_lock(struct nct6775_data *data)
+{
+	mutex_lock(&data->update_lock);
+
+	return 0;
+}
+
+static void nct6775_unlock(struct nct6775_data *data, struct device *dev)
+{
+	mutex_unlock(&data->update_lock);
+}
+
 struct nct6775_data *nct6775_update_device(struct device *dev)
 {
 	struct nct6775_data *data = dev_get_drvdata(dev);
-	int i, j, err = 0;
+	int i, j, err;
 	u16 reg;
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return data;
 
 	if (time_after(jiffies, data->last_updated + HZ + HZ / 2)
 	    || !data->valid) {
@@ -1616,7 +1630,7 @@ struct nct6775_data *nct6775_update_device(struct device *dev)
 		data->valid = true;
 	}
 out:
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? ERR_PTR(err) : data;
 }
 EXPORT_SYMBOL_GPL(nct6775_update_device);
@@ -1652,10 +1666,14 @@ store_in_reg(struct device *dev, struct device_attribute *attr, const char *buf,
 	err = kstrtoul(buf, 10, &val);
 	if (err < 0)
 		return err;
-	mutex_lock(&data->update_lock);
+
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->in[nr][index] = in_to_reg(val, nr);
 	err = nct6775_write_value(data, data->REG_IN_MINMAX[index - 1][nr], data->in[nr][index]);
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -1749,14 +1767,17 @@ nct6775_store_beep(struct device *dev, struct device_attribute *attr, const char
 	if (val > 1)
 		return -EINVAL;
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	if (val)
 		data->beeps |= (1ULL << nr);
 	else
 		data->beeps &= ~(1ULL << nr);
 	err = nct6775_write_value(data, data->REG_BEEP[regindex],
 				  (data->beeps >> (regindex << 3)) & 0xff);
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 EXPORT_SYMBOL_GPL(nct6775_store_beep);
@@ -1809,14 +1830,17 @@ store_temp_beep(struct device *dev, struct device_attribute *attr,
 	bit = data->BEEP_BITS[nr + TEMP_ALARM_BASE];
 	regindex = bit >> 3;
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	if (val)
 		data->beeps |= (1ULL << bit);
 	else
 		data->beeps &= ~(1ULL << bit);
 	err = nct6775_write_value(data, data->REG_BEEP[regindex],
 				  (data->beeps >> (regindex << 3)) & 0xff);
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 
 	return err ? : count;
 }
@@ -1916,7 +1940,10 @@ store_fan_min(struct device *dev, struct device_attribute *attr,
 	if (err < 0)
 		return err;
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	if (!data->has_fan_div) {
 		/* NCT6776F or NCT6779D; we know this is a 13 bit register */
 		if (!val) {
@@ -1991,7 +2018,7 @@ write_div:
 
 write_min:
 	err = nct6775_write_value(data, data->REG_FAN_MIN[nr], data->fan_min[nr]);
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 
 	return err ? : count;
 }
@@ -2028,7 +2055,10 @@ store_fan_pulses(struct device *dev, struct device_attribute *attr,
 	if (val > 4)
 		return -EINVAL;
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->fan_pulses[nr] = val & 3;
 	err = nct6775_read_value(data, data->REG_FAN_PULSES[nr], &reg);
 	if (err)
@@ -2037,7 +2067,7 @@ store_fan_pulses(struct device *dev, struct device_attribute *attr,
 	reg |= (val & 3) << data->FAN_PULSE_SHIFT[nr];
 	err = nct6775_write_value(data, data->REG_FAN_PULSES[nr], reg);
 out:
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 
 	return err ? : count;
 }
@@ -2138,10 +2168,13 @@ store_temp(struct device *dev, struct device_attribute *attr, const char *buf,
 	if (err < 0)
 		return err;
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->temp[index][nr] = LM75_TEMP_TO_REG(val);
 	err = nct6775_write_temp(data, data->reg_temp[index][nr], data->temp[index][nr]);
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -2173,10 +2206,13 @@ store_temp_offset(struct device *dev, struct device_attribute *attr,
 
 	val = clamp_val(DIV_ROUND_CLOSEST(val, 1000), -128, 127);
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->temp_offset[nr] = val;
 	err = nct6775_write_value(data, data->REG_TEMP_OFFSET[nr], val);
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 
 	return err ? : count;
 }
@@ -2216,7 +2252,9 @@ store_temp_type(struct device *dev, struct device_attribute *attr,
 	if (val != 1 && val != 3 && val != 4)
 		return -EINVAL;
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
 
 	data->temp_type[nr] = val;
 	vbit = 0x02 << nr;
@@ -2248,7 +2286,7 @@ store_temp_type(struct device *dev, struct device_attribute *attr,
 		goto out;
 	err = nct6775_write_value(data, data->REG_DIODE, diode);
 out:
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -2405,7 +2443,10 @@ store_pwm_mode(struct device *dev, struct device_attribute *attr,
 		return count;
 	}
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->pwm_mode[nr] = val;
 	err = nct6775_read_value(data, data->REG_PWM_MODE[nr], &reg);
 	if (err)
@@ -2415,7 +2456,7 @@ store_pwm_mode(struct device *dev, struct device_attribute *attr,
 		reg |= data->PWM_MODE_MASK[nr];
 	err = nct6775_write_value(data, data->REG_PWM_MODE[nr], reg);
 out:
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -2467,7 +2508,10 @@ store_pwm(struct device *dev, struct device_attribute *attr, const char *buf,
 		return err;
 	val = clamp_val(val, minval[index], maxval[index]);
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->pwm[index][nr] = val;
 	err = nct6775_write_value(data, data->REG_PWM[index][nr], val);
 	if (err)
@@ -2482,7 +2526,7 @@ store_pwm(struct device *dev, struct device_attribute *attr, const char *buf,
 		err = nct6775_write_value(data, data->REG_TEMP_SEL[nr], reg);
 	}
 out:
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -2599,7 +2643,10 @@ store_pwm_enable(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 	}
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->pwm_enable[nr] = val;
 	if (val == off) {
 		/*
@@ -2620,7 +2667,7 @@ store_pwm_enable(struct device *dev, struct device_attribute *attr,
 	reg |= pwm_enable_to_reg(val) << 4;
 	err = nct6775_write_value(data, data->REG_FAN_MODE[nr], reg);
 out:
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -2676,7 +2723,10 @@ store_pwm_temp_sel(struct device *dev, struct device_attribute *attr,
 	if (!(data->have_temp & BIT(val - 1)) || !data->temp_src[val - 1])
 		return -EINVAL;
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	src = data->temp_src[val - 1];
 	data->pwm_temp_sel[nr] = src;
 	err = nct6775_read_value(data, data->REG_TEMP_SEL[nr], &reg);
@@ -2686,7 +2736,7 @@ store_pwm_temp_sel(struct device *dev, struct device_attribute *attr,
 	reg |= src;
 	err = nct6775_write_value(data, data->REG_TEMP_SEL[nr], reg);
 out:
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 
 	return err ? : count;
 }
@@ -2730,7 +2780,10 @@ store_pwm_weight_temp_sel(struct device *dev, struct device_attribute *attr,
 		    !data->temp_src[val - 1]))
 		return -EINVAL;
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	if (val) {
 		src = data->temp_src[val - 1];
 		data->pwm_weight_temp_sel[nr] = src;
@@ -2749,7 +2802,7 @@ store_pwm_weight_temp_sel(struct device *dev, struct device_attribute *attr,
 		err = nct6775_write_value(data, data->REG_WEIGHT_TEMP_SEL[nr], reg);
 	}
 out:
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 
 	return err ? : count;
 }
@@ -2783,10 +2836,13 @@ store_target_temp(struct device *dev, struct device_attribute *attr,
 	val = clamp_val(DIV_ROUND_CLOSEST(val, 1000), 0,
 			data->target_temp_mask);
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->target_temp[nr] = val;
 	err = pwm_update_registers(data, nr);
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -2823,10 +2879,13 @@ store_target_speed(struct device *dev, struct device_attribute *attr,
 	val = clamp_val(val, 0, 1350000U);
 	speed = fan_to_reg(val, data->fan_div[nr]);
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->target_speed[nr] = speed;
 	err = pwm_update_registers(data, nr);
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -2863,13 +2922,16 @@ store_temp_tolerance(struct device *dev, struct device_attribute *attr,
 	/* Limit tolerance as needed */
 	val = clamp_val(DIV_ROUND_CLOSEST(val, 1000), 0, data->tolerance_mask);
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->temp_tolerance[index][nr] = val;
 	if (index)
 		err = pwm_update_registers(data, nr);
 	else
 		err = nct6775_write_value(data, data->REG_CRITICAL_TEMP_TOLERANCE[nr], val);
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -2940,10 +3002,13 @@ store_speed_tolerance(struct device *dev, struct device_attribute *attr,
 	/* Limit tolerance as needed */
 	val = clamp_val(val, 0, data->speed_tolerance_limit);
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->target_speed_tolerance[nr] = val;
 	err = pwm_update_registers(data, nr);
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -2989,10 +3054,13 @@ store_weight_temp(struct device *dev, struct device_attribute *attr,
 
 	val = clamp_val(DIV_ROUND_CLOSEST(val, 1000), 0, 255);
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->weight_temp[index][nr] = val;
 	err = nct6775_write_value(data, data->REG_WEIGHT_TEMP[index][nr], val);
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -3039,10 +3107,13 @@ store_fan_time(struct device *dev, struct device_attribute *attr,
 		return err;
 
 	val = step_time_to_reg(val, data->pwm_mode[nr]);
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->fan_time[index][nr] = val;
 	err = nct6775_write_value(data, data->REG_FAN_TIME[index][nr], val);
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -3083,7 +3154,10 @@ store_auto_pwm(struct device *dev, struct device_attribute *attr,
 			val = 0xff;
 	}
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->auto_pwm[nr][point] = val;
 	if (point < data->auto_pwm_num) {
 		err = nct6775_write_value(data, NCT6775_AUTO_PWM(data, nr, point),
@@ -3128,7 +3202,7 @@ store_auto_pwm(struct device *dev, struct device_attribute *attr,
 			break;
 		}
 	}
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -3167,7 +3241,10 @@ store_auto_temp(struct device *dev, struct device_attribute *attr,
 	if (val > 255000)
 		return -EINVAL;
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->auto_temp[nr][point] = DIV_ROUND_CLOSEST(val, 1000);
 	if (point < data->auto_pwm_num) {
 		err = nct6775_write_value(data, NCT6775_AUTO_TEMP(data, nr, point),
@@ -3176,7 +3253,7 @@ store_auto_temp(struct device *dev, struct device_attribute *attr,
 		err = nct6775_write_value(data, data->REG_CRITICAL_TEMP[nr],
 					  data->auto_temp[nr][point]);
 	}
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return err ? : count;
 }
 
@@ -3422,6 +3499,9 @@ int nct6775_probe(struct device *dev, struct nct6775_data *data,
 		return PTR_ERR(data->regmap);
 
 	mutex_init(&data->update_lock);
+	data->lock = nct6775_lock;
+	data->unlock = nct6775_unlock;
+
 	data->name = nct6775_device_names[data->kind];
 	data->bank = 0xff;		/* Force initial bank selection */
 

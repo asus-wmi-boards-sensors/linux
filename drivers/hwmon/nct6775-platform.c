@@ -507,7 +507,10 @@ static int __maybe_unused nct6775_suspend(struct device *dev)
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	err = nct6775_read_value(data, data->REG_VBAT, &tmp);
 	if (err)
 		goto out;
@@ -524,7 +527,7 @@ static int __maybe_unused nct6775_suspend(struct device *dev)
 		data->fandiv2 = tmp;
 	}
 out:
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 
 	return err;
 }
@@ -536,7 +539,10 @@ static int __maybe_unused nct6775_resume(struct device *dev)
 	int i, j, err = 0;
 	u8 reg;
 
-	mutex_lock(&data->update_lock);
+	err = data->lock(data);
+	if (err)
+		return err;
+
 	data->bank = 0xff;		/* Force initial bank selection */
 
 	err = sio_data->sio_enter(sio_data);
@@ -605,7 +611,7 @@ static int __maybe_unused nct6775_resume(struct device *dev)
 abort:
 	/* Force re-reading all values */
 	data->valid = false;
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 
 	return err;
 }
@@ -879,7 +885,9 @@ clear_caseopen(struct device *dev, struct device_attribute *attr,
 	if (kstrtoul(buf, 10, &val) || val != 0)
 		return -EINVAL;
 
-	mutex_lock(&data->update_lock);
+	ret = data->lock(data);
+	if (ret)
+		return ret;
 
 	/*
 	 * Use CR registers to clear caseopen status.
@@ -902,7 +910,7 @@ clear_caseopen(struct device *dev, struct device_attribute *attr,
 
 	data->valid = false;	/* Force cache refresh */
 error:
-	mutex_unlock(&data->update_lock);
+	data->unlock(data, dev);
 	return count;
 }
 
