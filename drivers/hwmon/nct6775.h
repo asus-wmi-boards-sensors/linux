@@ -90,7 +90,9 @@ struct nct6775_data {
 	unsigned int (*fan_from_reg)(u16 reg, unsigned int divreg);
 	unsigned int (*fan_from_reg_min)(u16 reg, unsigned int divreg);
 
-	struct mutex update_lock;
+	struct mutex update_lock;	/* non ACPI lock */
+	acpi_handle acpi_wmi_mutex;	/* ACPI lock */
+
 	bool valid;		/* true if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
 
