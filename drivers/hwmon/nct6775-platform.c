@@ -1619,6 +1619,61 @@ static enum sensor_access nct6775_determine_access(const char *board_name)
 	return access;
 }
 
+struct acpi_board_info {
+	char *acpi_mutex_path;
+};
+
+#define DMI_ASUS_BOARD_INFO(name, mutex_path)			\
+static struct acpi_board_info name = {				\
+	.acpi_mutex_path = mutex_path,				\
+}
+
+DMI_ASUS_BOARD_INFO(acpi_board_LPCB_MUTEX, "\\_SB_.PCI0.LPCB.SIO1.MUT0");
+DMI_ASUS_BOARD_INFO(acpi_board_LPC0_MUTEX, "\\_SB_.PCI0.LPC0.SIO1.MUT0");
+DMI_ASUS_BOARD_INFO(acpi_board_SBRG_MUTEX, "\\_SB.PCI0.SBRG.SIO1.MUT0");
+
+#define DMI_MATCH_ASUS_WMI_BOARD(name, info) {					\
+	.matches = {								\
+		DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "ASUSTeK COMPUTER INC."),	\
+		DMI_EXACT_MATCH(DMI_BOARD_NAME, name),				\
+	},									\
+	.driver_data = info,							\
+}
+
+#define DMI_MATCH_ASUS_NONWMI_BOARD(name, info) {				\
+	.matches = {								\
+		DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "ASUSTeK Computer INC."),	\
+		DMI_EXACT_MATCH(DMI_BOARD_NAME, name),				\
+	},									\
+	.driver_data = info,							\
+}
+
+
+static const struct dmi_system_id asus_wmi_info_table[] = {
+	DMI_MATCH_ASUS_NONWMI_BOARD("P8Z68-V LX", &acpi_board_LPCB_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("X99-E WS/USB 3.1", &acpi_board_LPC0_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS VII HERO", &acpi_board_LPCB_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("P8H67", &acpi_board_LPCB_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG MAXIMUS X HERO", &acpi_board_LPCB_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX Z370-H GAMING", &acpi_board_LPCB_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Z170-DELUXE", &acpi_board_LPCB_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Z170M-PLUS", &acpi_board_LPCB_MUTEX),
+	/* Possible i2c driver requirement */
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME X370-PRO", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME X470-PRO", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME X399-A", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME B450M-GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME Z270-A", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME Z370-A", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG CROSSHAIR VI Hero", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX X399-E GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX B350-F GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX B450-F GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("TUF B450 PLUS GAMING", &acpi_board_SBRG_MUTEX),
+	{}
+};
+MODULE_DEVICE_TABLE(dmi, asus_wmi_info_table);
+
 static int __init sensors_nct6775_platform_init(void)
 {
 	int i, err;
@@ -1629,7 +1684,10 @@ static int __init sensors_nct6775_platform_init(void)
 	int sioaddr[2] = { 0x2e, 0x4e };
 	enum sensor_access access = access_direct;
 	const char *board_vendor, *board_name;
+	const struct dmi_system_id *dmi_id;
+	struct acpi_board_info *board_info;
 	acpi_handle acpi_wmi_mutex = NULL;
+	acpi_status status;
 
 	err = platform_driver_register(&nct6775_driver);
 	if (err)
@@ -1642,6 +1700,28 @@ static int __init sensors_nct6775_platform_init(void)
 	if (board_name && board_vendor &&
 	    !strcmp(board_vendor, "ASUSTeK COMPUTER INC."))
 		access = nct6775_determine_access(board_name);
+
+	/* Mutext access check */
+	dmi_id = dmi_first_match(asus_wmi_info_table);
+	if (dmi_id && dmi_id->driver_data) {
+		board_info = dmi_id->driver_data;
+		if (board_info->acpi_mutex_path) {
+			status = acpi_get_handle(NULL, board_info->acpi_mutex_path,
+						 &acpi_wmi_mutex);
+			if (!ACPI_FAILURE(status)) {
+				pr_info("Using Asus WMI mutex: %s\n",
+					board_info->acpi_mutex_path);
+				access = access_direct;
+			} else {
+				pr_info("No such ASUS mutex: %s\n",
+					board_info->acpi_mutex_path);
+			}
+		} else {
+			pr_info("No mutex path\n");
+		}
+	} else {
+		pr_info("No dmi definition `%s`:`%s`\n", board_name, board_vendor);
+	}
 
 	/*
 	 * initialize sio_data->kind and sio_data->sioreg.
