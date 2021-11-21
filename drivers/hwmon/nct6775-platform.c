@@ -1097,22 +1097,47 @@ static int __init nct6775_find(int sioaddr, struct nct6775_sio_data *sio_data)
 static struct platform_device *pdev[2];
 
 static const char * const asus_wmi_boards[] = {
-	"PRO H410T",
-	"ProArt X570-CREATOR WIFI",
-	"Pro B550M-C",
-	"Pro WS X570-ACE",
+	"CROSSHAIR VI HERO", // use custom port definition
 	"PRIME B360-PLUS",
+	"PRIME B450-PLUS", // use custom port definition
+	"PRIME B450M-GAMING II", // use custom port definition
+	"PRIME B450M-GAMING/BR", // use custom port definition
 	"PRIME B460-PLUS",
 	"PRIME B550-PLUS",
 	"PRIME B550M-A",
 	"PRIME B550M-A (WI-FI)",
+	"PRIME B550M-A AC",
+	"PRIME B550M-A WIFI II",
+	"PRIME B550M-K",
 	"PRIME H410M-R",
+	"PRIME X370-PRO", // use custom port definition
+	"PRIME X470-PRO", // use custom port definition
 	"PRIME X570-P",
 	"PRIME X570-PRO",
+	"PRO H410T",
+	"Pro B550M-C",
+	"Pro WS X570-ACE",
+	"ProArt B550-CREATOR",
+	"ProArt X570-CREATOR WIFI",
+	"ProArt Z490-CREATOR 10G",
+	"ROG CROSSHAIR VI EXTREME", // use custom port definition
+	"ROG CROSSHAIR VI HERO (WI-FI AC)", // use custom port definition
+	"ROG CROSSHAIR VII HERO", // use custom port definition
+	"ROG CROSSHAIR VII HERO (WI-FI)", // use custom port definition
 	"ROG CROSSHAIR VIII DARK HERO",
+	"ROG CROSSHAIR VIII EXTREME",
 	"ROG CROSSHAIR VIII FORMULA",
 	"ROG CROSSHAIR VIII HERO",
+	"ROG CROSSHAIR VIII HERO (WI-FI)",
 	"ROG CROSSHAIR VIII IMPACT",
+	"ROG MAXIMUS XI HERO",
+	"ROG MAXIMUS XI HERO (WI-FI)",
+	"ROG STRIX B350-F GAMING", // use custom port definition
+	"ROG STRIX B350-I GAMING", // use custom port definition
+	"ROG STRIX B450-E GAMING", // use custom port definition
+	"ROG STRIX B450-F GAMING", // use custom port definition
+	"ROG STRIX B450-F GAMING II", // use custom port definition
+	"ROG STRIX B450-I GAMING", // use custom port definition
 	"ROG STRIX B550-A GAMING",
 	"ROG STRIX B550-E GAMING",
 	"ROG STRIX B550-F GAMING",
@@ -1120,6 +1145,10 @@ static const char * const asus_wmi_boards[] = {
 	"ROG STRIX B550-F GAMING WIFI II",
 	"ROG STRIX B550-I GAMING",
 	"ROG STRIX B550-XE GAMING (WI-FI)",
+	"ROG STRIX X370-F GAMING", // use custom port definition
+	"ROG STRIX X370-I GAMING", // use custom port definition
+	"ROG STRIX X470-F GAMING", // use custom port definition
+	"ROG STRIX X470-I GAMING", // use custom port definition
 	"ROG STRIX X570-E GAMING",
 	"ROG STRIX X570-E GAMING WIFI II",
 	"ROG STRIX X570-F GAMING",
@@ -1135,16 +1164,22 @@ static const char * const asus_wmi_boards[] = {
 	"ROG STRIX Z490-G GAMING (WI-FI)",
 	"ROG STRIX Z490-H GAMING",
 	"ROG STRIX Z490-I GAMING",
-	"TUF GAMING B550M-PLUS",
-	"TUF GAMING B550M-PLUS (WI-FI)",
+	"TUF B450 PLUS GAMING", // use custom port definition
+	"TUF GAMING B450-PLUS II", // use custom port definition
 	"TUF GAMING B550-PLUS",
 	"TUF GAMING B550-PLUS WIFI II",
 	"TUF GAMING B550-PRO",
+	"TUF GAMING B550M-E",
+	"TUF GAMING B550M-E (WI-FI)",
+	"TUF GAMING B550M-PLUS",
+	"TUF GAMING B550M-PLUS (WI-FI)",
+	"TUF GAMING B550M-PLUS WIFI II",
 	"TUF GAMING X570-PLUS",
 	"TUF GAMING X570-PLUS (WI-FI)",
 	"TUF GAMING X570-PRO (WI-FI)",
 	"TUF GAMING Z490-PLUS",
 	"TUF GAMING Z490-PLUS (WI-FI)",
+	"Z490-GUNDAM (WI-FI)",
 };
 
 static const char * const asus_msi_boards[] = {
@@ -1163,12 +1198,14 @@ static const char * const asus_msi_boards[] = {
 	"Pro B660M-C-D4",
 	"ProArt B660-CREATOR D4",
 	"ProArt X670E-CREATOR WIFI",
+	"ProArt Z790-CREATOR WIFI", // use custom port definition
 	"ROG CROSSHAIR X670E EXTREME",
 	"ROG CROSSHAIR X670E GENE",
 	"ROG CROSSHAIR X670E HERO",
 	"ROG MAXIMUS XIII EXTREME GLACIAL",
 	"ROG MAXIMUS Z690 EXTREME",
 	"ROG MAXIMUS Z690 EXTREME GLACIAL",
+	"ROG MAXIMUS Z790 EXTREME", // use custom port definition
 	"ROG STRIX B650-A GAMING WIFI",
 	"ROG STRIX B650E-E GAMING WIFI",
 	"ROG STRIX B650E-F GAMING WIFI",
@@ -1233,6 +1270,85 @@ static enum sensor_access nct6775_determine_access(const char *device_uid)
 	return access_direct;
 }
 
+struct acpi_board_info {
+	char *acpi_mutex_path;
+};
+
+#define DMI_ASUS_BOARD_INFO(name, mutex_path)			\
+static struct acpi_board_info name = {				\
+	.acpi_mutex_path = mutex_path,				\
+}
+
+DMI_ASUS_BOARD_INFO(acpi_board_GPEM_MUTEX, "\\_GPE.MUT0");
+DMI_ASUS_BOARD_INFO(acpi_board_LPCB_MUTEX, "\\_SB_.PCI0.LPCB.SIO1.MUT0");
+DMI_ASUS_BOARD_INFO(acpi_board_0LPC_MUTEX, "\\_SB.PC00.LPCB.SIO1.MUT0");
+DMI_ASUS_BOARD_INFO(acpi_board_SBRG_MUTEX, "\\_SB.PCI0.SBRG.SIO1.MUT0");
+
+#define DMI_MATCH_ASUS_WMI_BOARD(name, info) {					\
+	.matches = {								\
+		DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "ASUSTeK COMPUTER INC."),	\
+		DMI_EXACT_MATCH(DMI_BOARD_NAME, name),				\
+	},									\
+	.driver_data = info,							\
+}
+
+#define DMI_MATCH_ASUS_NONWMI_BOARD(name, info) {				\
+	.matches = {								\
+		DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "ASUSTeK Computer INC."),	\
+		DMI_EXACT_MATCH(DMI_BOARD_NAME, name),				\
+	},									\
+	.driver_data = info,							\
+}
+
+
+static const struct dmi_system_id asus_wmi_info_table[] = {
+	DMI_MATCH_ASUS_NONWMI_BOARD("P8Z68-V LX", &acpi_board_LPCB_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("CROSSHAIR VI HERO", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS IX APEX", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS IX CODE", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS IX EXTREME", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS IX FORMULA", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS IX HERO", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS VII HERO", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("P8H67", &acpi_board_LPCB_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME B450M-GAMING/BR", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME B450M-GAMING II", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME B450-PLUS", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME X370-PRO", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME X470-PRO", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME Z270-A", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ProArt Z790-CREATOR WIFI", &acpi_board_0LPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG CROSSHAIR VI EXTREME", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG CROSSHAIR VI HERO (WI-FI AC)", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG CROSSHAIR VII HERO", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG CROSSHAIR VII HERO (WI-FI)", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG MAXIMUS X HERO", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG MAXIMUS Z790 EXTREME", &acpi_board_0LPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX B350-F GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX B350-I GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX B450-E GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX B450-F GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX B450-F GAMING II", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX B450-I GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX X370-F GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX X370-I GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX X470-F GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX X470-I GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX Z370-H GAMING", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("STRIX-Z270E-GAMING", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("STRIX-Z270F-GAMING", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("STRIX-Z270G-GAMING", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("STRIX-Z270H-GAMING", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("TUF B450 PLUS GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("TUF GAMING B450-PLUS II", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("TUF Z270 MARK 1", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Z170-DELUXE", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Z170M-PLUS", &acpi_board_GPEM_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Z270-WS", &acpi_board_GPEM_MUTEX),
+	{}
+};
+MODULE_DEVICE_TABLE(dmi, asus_wmi_info_table);
+
 static int __init sensors_nct6775_platform_init(void)
 {
 	int i, err;
@@ -1243,7 +1359,10 @@ static int __init sensors_nct6775_platform_init(void)
 	int sioaddr[2] = { 0x2e, 0x4e };
 	enum sensor_access access = access_direct;
 	const char *board_vendor, *board_name;
+	const struct dmi_system_id *dmi_id;
+	struct acpi_board_info *board_info;
 	acpi_handle acpi_wmi_mutex = NULL;
+	acpi_status status;
 
 	err = platform_driver_register(&nct6775_driver);
 	if (err)
@@ -1263,6 +1382,30 @@ static int __init sensors_nct6775_platform_init(void)
 				   board_name);
 		if (err >= 0)
 			access = nct6775_determine_access(ASUSMSI_DEVICE_UID);
+	}
+
+	if (access == access_direct) {
+		/* Mutext access check */
+		dmi_id = dmi_first_match(asus_wmi_info_table);
+		if (dmi_id && dmi_id->driver_data) {
+			board_info = dmi_id->driver_data;
+			if (board_info->acpi_mutex_path) {
+				status = acpi_get_handle(NULL, board_info->acpi_mutex_path,
+							 &acpi_wmi_mutex);
+				if (!ACPI_FAILURE(status)) {
+					pr_info("Using Asus WMI mutex: %s\n",
+						board_info->acpi_mutex_path);
+					access = access_direct;
+				} else {
+					pr_info("No such ASUS mutex: %s\n",
+						board_info->acpi_mutex_path);
+				}
+			} else {
+				pr_info("No mutex path\n");
+			}
+		} else {
+			pr_info("No dmi definition `%s`:`%s`\n", board_name, board_vendor);
+		}
 	}
 
 	/*
