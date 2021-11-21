@@ -94,6 +94,9 @@ struct nct6775_data {
 	bool valid;		/* true if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
 
+	int (*lock)(struct nct6775_data *data);
+	void (*unlock)(struct nct6775_data *data, struct device *dev);
+
 	/* Register values */
 	u8 bank;		/* current register bank */
 	u8 in_num;		/* number of in inputs we have */
