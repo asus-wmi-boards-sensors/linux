@@ -100,6 +100,7 @@ struct nct6775_sio_data {
 	int ld;
 	enum kinds kind;
 	enum sensor_access access;
+	acpi_handle acpi_wmi_mutex;
 
 	/* superio_() callbacks  */
 	void (*sio_outb)(struct nct6775_sio_data *sio_data, int reg, int val);
@@ -1090,6 +1091,7 @@ static int nct6775_platform_probe(struct platform_device *pdev)
 	if (!data)
 		return -ENOMEM;
 
+	data->acpi_wmi_mutex = sio_data->acpi_wmi_mutex;
 	data->kind = sio_data->kind;
 	data->sioreg = sio_data->sioreg;
 
@@ -1346,6 +1348,7 @@ static int __init sensors_nct6775_platform_init(void)
 	int sioaddr[2] = { 0x2e, 0x4e };
 	enum sensor_access access = access_direct;
 	const char *board_vendor, *board_name;
+	acpi_handle acpi_wmi_mutex = NULL;
 
 	err = platform_driver_register(&nct6775_driver);
 	if (err)
@@ -1380,6 +1383,7 @@ static int __init sensors_nct6775_platform_init(void)
 		found = true;
 
 		sio_data.access = access;
+		sio_data.acpi_wmi_mutex = acpi_wmi_mutex;
 
 		if (access == access_asuswmi) {
 			sio_data.sio_outb = superio_wmi_outb;
@@ -1413,11 +1417,13 @@ static int __init sensors_nct6775_platform_init(void)
 			res.end = address + IOREGION_OFFSET + IOREGION_LENGTH - 1;
 			res.flags = IORESOURCE_IO;
 
-			err = acpi_check_resource_conflict(&res);
-			if (err) {
-				platform_device_put(pdev[i]);
-				pdev[i] = NULL;
-				continue;
+			if (!acpi_wmi_mutex) {
+				err = acpi_check_resource_conflict(&res);
+				if (err) {
+					platform_device_put(pdev[i]);
+					pdev[i] = NULL;
+					continue;
+				}
 			}
 
 			err = platform_device_add_resources(pdev[i], &res, 1);

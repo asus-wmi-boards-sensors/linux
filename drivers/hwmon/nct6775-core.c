@@ -41,6 +41,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/acpi.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/slab.h>
@@ -3481,6 +3482,29 @@ static int add_temp_sensors(struct nct6775_data *data, const u16 *regp,
 	return 0;
 }
 
+/* Wait for up to 0.5 s to acquire the lock */
+#define ASUSWMI_LOCK_TIMEOUT_MS		500
+
+static int nct6775_wmi_lock(struct nct6775_data *data)
+{
+	acpi_status status;
+
+	status = acpi_acquire_mutex(data->acpi_wmi_mutex, NULL, ASUSWMI_LOCK_TIMEOUT_MS);
+	if (ACPI_FAILURE(status))
+		return -EIO;
+
+	return 0;
+}
+
+static void nct6775_wmi_unlock(struct nct6775_data *data, struct device *dev)
+{
+	acpi_status status;
+
+	status = acpi_release_mutex(data->acpi_wmi_mutex, NULL);
+	if (ACPI_FAILURE(status))
+		dev_err(dev, "Failed to release mutex.");
+}
+
 int nct6775_probe(struct device *dev, struct nct6775_data *data,
 		  const struct regmap_config *regmapcfg)
 {
@@ -3498,9 +3522,14 @@ int nct6775_probe(struct device *dev, struct nct6775_data *data,
 	if (IS_ERR(data->regmap))
 		return PTR_ERR(data->regmap);
 
-	mutex_init(&data->update_lock);
-	data->lock = nct6775_lock;
-	data->unlock = nct6775_unlock;
+	if (data->acpi_wmi_mutex) {
+		data->lock = nct6775_wmi_lock;
+		data->unlock = nct6775_wmi_unlock;
+	} else {
+		mutex_init(&data->update_lock);
+		data->lock = nct6775_lock;
+		data->unlock = nct6775_unlock;
+	}
 
 	data->name = nct6775_device_names[data->kind];
 	data->bank = 0xff;		/* Force initial bank selection */
