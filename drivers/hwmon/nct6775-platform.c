@@ -1506,6 +1506,126 @@ static enum sensor_access nct6775_determine_access(const char *device_uid)
 	return access_direct;
 }
 
+struct acpi_board_info {
+	char *acpi_mutex_path;
+};
+
+#define DMI_ASUS_BOARD_INFO(name, mutex_path)			\
+static struct acpi_board_info name = {				\
+	.acpi_mutex_path = mutex_path,				\
+}
+
+DMI_ASUS_BOARD_INFO(acpi_board_ILPC_MUTEX, "\\_SB.PCI0.LPCB.SIO1.MUT0");
+DMI_ASUS_BOARD_INFO(acpi_board_SBRG_MUTEX, "\\_SB.PCI0.SBRG.SIO1.MUT0");
+DMI_ASUS_BOARD_INFO(acpi_board_LPC0_MUTEX, "\\_SB_.PCI0.LPC0.SIO1.MUT0");
+
+#define DMI_MATCH_ASUS_WMI_BOARD(name, info) {					\
+	.matches = {								\
+		DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "ASUSTeK COMPUTER INC."),	\
+		DMI_EXACT_MATCH(DMI_BOARD_NAME, name),				\
+	},									\
+	.driver_data = info,							\
+}
+
+#define DMI_MATCH_ASUS_NONWMI_BOARD(name, info) {				\
+	.matches = {								\
+		DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "ASUSTeK Computer INC."),	\
+		DMI_EXACT_MATCH(DMI_BOARD_NAME, name),				\
+	},									\
+	.driver_data = info,							\
+}
+
+#define DMI_MATCH_ASROCK_WMI_BOARD(name, info) {					\
+	.matches = {								\
+		DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "ASRock"),	\
+		DMI_EXACT_MATCH(DMI_BOARD_NAME, name),				\
+	},									\
+	.driver_data = info,							\
+}
+
+static const struct dmi_system_id asus_wmi_info_table[] = {
+	DMI_MATCH_ASUS_WMI_BOARD("B150 PRO GAMING", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("B150 PRO GAMING D3", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("B150M PRO GAMING", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASROCK_WMI_BOARD("B365M Pro4-F", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASROCK_WMI_BOARD("B450M Pro4", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASROCK_WMI_BOARD("B650E PG Riptide WiFi", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("EX-B365M-V", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("EX-B365M-V5", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("EX-H310M-V3 R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("H81M-R", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("K30AD_M31AD_M51AD_M32AD", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS IX APEX", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS IX CODE", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS IX EXTREME", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS IX FORMULA", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS IX HERO", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS VII HERO", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("MAXIMUS VIII FORMULA", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("P8H61-M LX R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("P8H67", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_NONWMI_BOARD("P8Z68-V LX", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME B250M-C", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME B365-PLUS", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME B365M-A", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME B365M-C", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME B365M-K", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME H310-PLUS R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME H310I-PLUS R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME H310M-A R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME H310M-C R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME H310M-C/PS R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME H310M-CS R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME H310M-D R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME H310M-DASH R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME H310M-E R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME H310M-E R2.0/BR", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME H310M-F R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME H310M-K R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME H310M-R R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME X399-A", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRIME Z270-A", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("PRO H310M-R R2.0 WI-FI", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Pro WS C422-ACE", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Pro WS WRX80E-SAGE SE WIFI", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Pro WS WRX80E-SAGE SE WIFI II", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG MAXIMUS X HERO", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG RAMPAGE VI EXTREME ENCORE", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX B365-F GAMING", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX B365-G GAMING", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX TRX40-E GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX TRX40-XE GAMING", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG STRIX Z370-H GAMING", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG ZENITH II EXTREME", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("ROG ZENITH II EXTREME ALPHA", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("STRIX Z270E GAMING", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("STRIX Z270F GAMING", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("STRIX Z270G GAMING", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("STRIX Z270H GAMING", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("TUF B365-PLUS GAMING", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("TUF B365M-PLUS GAMING", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("TUF H310M-PLUS GAMING R2.0", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("TUF Z270 MARK 1", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASROCK_WMI_BOARD("X370 Gaming X", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASROCK_WMI_BOARD("X399 Taichi", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASROCK_WMI_BOARD("X570 Steel Legend", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASROCK_WMI_BOARD("X570 Taichi", &acpi_board_SBRG_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("X99-E WS/USB 3.1", &acpi_board_LPC0_MUTEX),
+	DMI_MATCH_ASROCK_WMI_BOARD("Z170 Extreme4", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Z170 PRO GAMING", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Z170 PRO GAMING/AURA", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Z170-A", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Z170-DELUXE", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Z170M-PLUS", &acpi_board_ILPC_MUTEX),
+	DMI_MATCH_ASUS_WMI_BOARD("Z270-WS", &acpi_board_ILPC_MUTEX),
+	{}
+};
+MODULE_DEVICE_TABLE(dmi, asus_wmi_info_table);
+
+static const char * const asus_nonconflict_boards[] = {
+	"H97-PRO GAMER",
+};
+
 static int __init sensors_nct6775_platform_init(void)
 {
 	int i, err;
@@ -1516,7 +1636,10 @@ static int __init sensors_nct6775_platform_init(void)
 	int sioaddr[2] = { 0x2e, 0x4e };
 	enum sensor_access access = access_direct;
 	const char *board_vendor, *board_name;
+	const struct dmi_system_id *dmi_id;
+	struct acpi_board_info *board_info;
 	acpi_handle acpi_wmi_mutex = NULL;
+	acpi_status status;
 
 	err = platform_driver_register(&nct6775_driver);
 	if (err)
@@ -1536,6 +1659,30 @@ static int __init sensors_nct6775_platform_init(void)
 				   board_name);
 		if (err >= 0)
 			access = nct6775_determine_access(ASUSMSI_DEVICE_UID);
+	}
+
+	if (access == access_direct) {
+		/* Mutext access check */
+		dmi_id = dmi_first_match(asus_wmi_info_table);
+		if (dmi_id && dmi_id->driver_data) {
+			board_info = dmi_id->driver_data;
+			if (board_info->acpi_mutex_path) {
+				status = acpi_get_handle(NULL, board_info->acpi_mutex_path,
+							 &acpi_wmi_mutex);
+				if (!ACPI_FAILURE(status)) {
+					pr_info("Using Asus WMI mutex: %s\n",
+						board_info->acpi_mutex_path);
+					access = access_direct;
+				} else {
+					pr_info("No such ASUS mutex: %s\n",
+						board_info->acpi_mutex_path);
+				}
+			} else {
+				pr_info("No mutex path\n");
+			}
+		} else {
+			pr_info("No dmi definition `%s`:`%s`\n", board_name, board_vendor);
+		}
 	}
 
 	/*
@@ -1587,7 +1734,9 @@ static int __init sensors_nct6775_platform_init(void)
 			res.end = address + IOREGION_OFFSET + IOREGION_LENGTH - 1;
 			res.flags = IORESOURCE_IO;
 
-			if (!acpi_wmi_mutex) {
+			err = match_string(asus_nonconflict_boards, ARRAY_SIZE(asus_nonconflict_boards),
+					   board_name);
+			if (!acpi_wmi_mutex && err < 0) {
 				err = acpi_check_resource_conflict(&res);
 				if (err) {
 					platform_device_put(pdev[i]);
