@@ -18,6 +18,7 @@
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/wmi.h>
+#include <linux/i2c.h>
 
 #include "nct6775.h"
 
@@ -1073,6 +1074,256 @@ static const struct regmap_config nct6775_acpi_regmap_config = {
 	.reg_write = nct6775_acpi_reg_write,
 };
 
+/* Nuvoton SMBus address offsets */
+#define SMBHSTDAT	0
+#define SMBBLKSZ	1
+#define SMBHSTCMD	2
+//Index field is the Command field on other controllers
+#define SMBHSTIDX	3
+#define SMBHSTCTL	4
+#define SMBHSTADD	5
+#define SMBHSTERR	9
+#define SMBHSTSTS	0xE
+
+/* Command register */
+#define NCT6793D_READ_BYTE	0
+#define NCT6793D_READ_WORD	1
+#define NCT6793D_WRITE_BYTE	8
+#define NCT6793D_WRITE_WORD	9
+#define NCT6793D_WRITE_BLOCK	10
+
+/* Control register */
+#define NCT6793D_MANUAL_START	128
+#define NCT6793D_SOFT_RESET	64
+
+/* Error register */
+#define NCT6793D_NO_ACK	32
+
+/* Status register */
+#define NCT6793D_FIFO_EMPTY	1
+#define NCT6793D_MANUAL_ACTIVE	4
+
+/* Other settings */
+#define MAX_RETRIES		400
+
+/* Return negative errno on error. */
+static s32 nct6775_i2c_access(struct i2c_adapter *adap, u16 addr,
+			      unsigned short flags, char read_write,
+			      u8 command, int size, union i2c_smbus_data *data)
+{
+	struct nct6775_data *adapdata = i2c_get_adapdata(adap);
+	union i2c_smbus_data tmp_data;
+	int timeout = 0, ret;
+	int i, len, cnt;
+
+	tmp_data.word = 0;
+	cnt = 0;
+	len = 0;
+
+	ret = adapdata->lock(adapdata);
+	if (ret)
+		return ret;
+
+	outb_p(NCT6793D_SOFT_RESET, adapdata->addr + SMBHSTCTL);
+
+	switch (size) {
+	case I2C_SMBUS_QUICK:
+		outb_p((addr << 1) | read_write,
+		       adapdata->addr + SMBHSTADD);
+		break;
+	case I2C_SMBUS_BYTE_DATA:
+		tmp_data.byte = data->byte;
+		outb_p((addr << 1) | read_write,
+		       adapdata->addr + SMBHSTADD);
+		outb_p(command, adapdata->addr + SMBHSTIDX);
+		if (read_write == I2C_SMBUS_WRITE) {
+			outb_p(tmp_data.byte, adapdata->addr + SMBHSTDAT);
+			outb_p(NCT6793D_WRITE_BYTE, adapdata->addr + SMBHSTCMD);
+		} else {
+			outb_p(NCT6793D_READ_BYTE, adapdata->addr + SMBHSTCMD);
+		}
+		break;
+	case I2C_SMBUS_BYTE:
+		outb_p((addr << 1) | read_write,
+		       adapdata->addr + SMBHSTADD);
+		outb_p(command, adapdata->addr + SMBHSTIDX);
+		if (read_write == I2C_SMBUS_WRITE) {
+			outb_p(tmp_data.byte, adapdata->addr + SMBHSTDAT);
+			outb_p(NCT6793D_WRITE_BYTE, adapdata->addr + SMBHSTCMD);
+		} else {
+			outb_p(NCT6793D_READ_BYTE, adapdata->addr + SMBHSTCMD);
+		}
+		break;
+	case I2C_SMBUS_WORD_DATA:
+		outb_p((addr << 1) | read_write,
+		       adapdata->addr + SMBHSTADD);
+		outb_p(command, adapdata->addr + SMBHSTIDX);
+		if (read_write == I2C_SMBUS_WRITE) {
+			outb_p(data->word & 0xff, adapdata->addr + SMBHSTDAT);
+			outb_p((data->word & 0xff00) >> 8, adapdata->addr + SMBHSTDAT);
+			outb_p(NCT6793D_WRITE_WORD, adapdata->addr + SMBHSTCMD);
+		} else {
+			outb_p(NCT6793D_READ_WORD, adapdata->addr + SMBHSTCMD);
+		}
+		break;
+	case I2C_SMBUS_BLOCK_DATA:
+		outb_p((addr << 1) | read_write,
+		       adapdata->addr + SMBHSTADD);
+		outb_p(command, adapdata->addr + SMBHSTIDX);
+		if (read_write == I2C_SMBUS_WRITE) {
+			len = data->block[0];
+
+			if (len == 0 || len > I2C_SMBUS_BLOCK_MAX) {
+				ret = -EINVAL;
+				goto abort;
+			}
+
+			outb_p(len, adapdata->addr + SMBBLKSZ);
+
+			cnt = 1;
+			if (len >= 4) {
+				for (i = cnt; i <= 4; i++)
+					outb_p(data->block[i], adapdata->addr + SMBHSTDAT);
+
+				len -= 4;
+				cnt += 4;
+			} else {
+				for (i = cnt; i <= len; i++)
+					outb_p(data->block[i], adapdata->addr + SMBHSTDAT);
+
+				len = 0;
+			}
+
+			outb_p(NCT6793D_WRITE_BLOCK, adapdata->addr + SMBHSTCMD);
+		} else {
+			ret = -EOPNOTSUPP;
+			goto abort;
+		}
+		break;
+	default:
+		dev_warn(&adap->dev, "Unsupported transaction %d\n", size);
+		ret = -EOPNOTSUPP;
+		goto abort;
+	}
+
+	outb_p(NCT6793D_MANUAL_START, adapdata->addr + SMBHSTCTL);
+
+	while ((size == I2C_SMBUS_BLOCK_DATA) && (len > 0)) {
+		if (read_write == I2C_SMBUS_WRITE) {
+			timeout = 0;
+
+			while ((inb_p(adapdata->addr + SMBHSTSTS) & NCT6793D_FIFO_EMPTY) == 0) {
+				if (timeout > MAX_RETRIES) {
+					ret = -ETIMEDOUT;
+					goto abort;
+				}
+
+				usleep_range(250, 500);
+				timeout++;
+			}
+
+			// Load more bytes into FIFO
+			if (len >= 4) {
+				for (i = cnt; i <= (cnt + 4); i++)
+					outb_p(data->block[i], adapdata->addr + SMBHSTDAT);
+
+				len -= 4;
+				cnt += 4;
+			} else {
+				for (i = cnt; i <= (cnt + len); i++)
+					outb_p(data->block[i], adapdata->addr + SMBHSTDAT);
+
+				len = 0;
+			}
+		} else {
+			ret = -EOPNOTSUPP;
+			goto abort;
+		}
+	}
+
+	//wait for manual mode to complete
+	timeout = 0;
+	while ((inb_p(adapdata->addr + SMBHSTSTS) & NCT6793D_MANUAL_ACTIVE) != 0) {
+		if (timeout > MAX_RETRIES) {
+			ret = -ETIMEDOUT;
+			goto abort;
+		}
+
+		usleep_range(250, 500);
+		timeout++;
+	}
+
+	if ((inb_p(adapdata->addr + SMBHSTERR) & NCT6793D_NO_ACK) != 0) {
+		ret = -ENXIO;
+		goto abort;
+	}
+
+	if (read_write == I2C_SMBUS_WRITE || size == I2C_SMBUS_QUICK)
+		goto abort;
+
+	switch (size) {
+	case I2C_SMBUS_QUICK:
+	case I2C_SMBUS_BYTE_DATA:
+		data->byte = inb_p(adapdata->addr + SMBHSTDAT);
+		break;
+	case I2C_SMBUS_WORD_DATA:
+		data->word = inb_p(adapdata->addr + SMBHSTDAT) +
+			     (inb_p(adapdata->addr + SMBHSTDAT) << 8);
+		break;
+	}
+
+abort:
+	adapdata->unlock(adapdata, &adap->dev);
+	return ret;
+}
+
+static u32 nct6775_i2c_func(struct i2c_adapter *adapter)
+{
+	return I2C_FUNC_SMBUS_QUICK | I2C_FUNC_SMBUS_BYTE |
+	    I2C_FUNC_SMBUS_BYTE_DATA | I2C_FUNC_SMBUS_WORD_DATA |
+	    I2C_FUNC_SMBUS_BLOCK_DATA;
+}
+
+static const struct i2c_algorithm smbus_algorithm = {
+	.smbus_xfer	= nct6775_i2c_access,
+	.functionality	= nct6775_i2c_func,
+};
+
+static int nct6775_i2c_add_adapter(acpi_handle acpi_wmi_mutex, struct nct6775_data *adapdata,
+				   struct i2c_adapter **padap)
+{
+	struct i2c_adapter *adap;
+	int retval;
+
+	adap = kzalloc(sizeof(*adap), GFP_KERNEL);
+	if (!adap)
+		return -ENOMEM;
+
+	adap->owner = THIS_MODULE;
+	adap->class = I2C_CLASS_HWMON | I2C_CLASS_SPD;
+	adap->algo = &smbus_algorithm;
+
+	snprintf(adap->name, sizeof(adap->name),
+		 "SMBus NCT67xx adapter at %04x", adapdata->addr);
+
+	i2c_set_adapdata(adap, adapdata);
+
+	retval = i2c_add_adapter(adap);
+	if (retval) {
+		kfree(adap);
+		return retval;
+	}
+
+	*padap = adap;
+	return 0;
+}
+
+static void nct6775_i2c_remove_adapter(struct i2c_adapter *adap)
+{
+	i2c_del_adapter(adap);
+	kfree(adap);
+}
+
 static int nct6775_platform_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1080,6 +1331,7 @@ static int nct6775_platform_probe(struct platform_device *pdev)
 	struct nct6775_data *data;
 	struct resource *res;
 	const struct regmap_config *regmapcfg;
+	int err;
 
 	if (sio_data->access == access_direct) {
 		res = platform_get_resource(pdev, IORESOURCE_IO, 0);
@@ -1111,7 +1363,35 @@ static int nct6775_platform_probe(struct platform_device *pdev)
 	data->driver_data = sio_data;
 	data->driver_init = nct6775_platform_probe_init;
 
-	return nct6775_probe(&pdev->dev, data, regmapcfg);
+	err = nct6775_probe(&pdev->dev, data, regmapcfg);
+
+	if (!err && sio_data->access == access_direct) {
+		switch (sio_data->kind) {
+		case nct6791:
+		case nct6792:
+		case nct6793:
+		case nct6795:
+		case nct6796:
+		case nct6798:
+			nct6775_i2c_add_adapter(data->acpi_wmi_mutex, data,
+						&data->i2c_adapter);
+			break;
+		default:
+			pr_err("i2c have not found");
+		}
+	}
+
+	return err;
+}
+
+static int nct6775_remove(struct platform_device *pdev)
+{
+	struct nct6775_data *data = platform_get_drvdata(pdev);
+
+	if (data->i2c_adapter)
+		nct6775_i2c_remove_adapter(data->i2c_adapter);
+
+	return 0;
 }
 
 static struct platform_driver nct6775_driver = {
@@ -1120,6 +1400,7 @@ static struct platform_driver nct6775_driver = {
 		.pm	= &nct6775_dev_pm_ops,
 	},
 	.probe		= nct6775_platform_probe,
+	.remove		= nct6775_remove,
 };
 
 /* nct6775_find() looks for a '627 in the Super-I/O config space */

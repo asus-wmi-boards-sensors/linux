@@ -53,6 +53,8 @@
 #include <linux/bitops.h>
 #include <linux/nospec.h>
 #include <linux/regmap.h>
+#include <linux/i2c.h>
+#include <linux/delay.h>
 #include "lm75.h"
 #include "nct6775.h"
 
