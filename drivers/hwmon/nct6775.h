@@ -181,6 +181,9 @@ struct nct6775_data {
 	struct regmap *regmap;
 	bool read_only;
 
+	/* ASUS boards specific i2c connected to nct6775 */
+	struct i2c_adapter *i2c_adapter;
+
 	/* driver-specific (platform, i2c) initialization hook and data */
 	int (*driver_init)(struct nct6775_data *data);
 	void *driver_data;
