@@ -344,11 +344,11 @@ static inline long get_sensor_value(const struct ec_sensor_info *si, u8 *data)
 {
 	switch (si->addr.size) {
 	case 1:
-		return *data;
+		return (s8)*data;
 	case 2:
-		return get_unaligned_be16(data);
+		return (s16)get_unaligned_be16(data);
 	case 4:
-		return get_unaligned_be32(data);
+		return (s32)get_unaligned_be32(data);
 	default:
 		return 0;
 	}
