@@ -18,6 +18,7 @@
  * - Chipset Fan RPM
  * - Water Flow Fan RPM
  * - CPU current
+ * - CPU core voltage
  */
 
 #include <linux/acpi.h>
@@ -79,6 +80,7 @@ enum known_ec_sensor {
 	SENSOR_TEMP_MB,
 	SENSOR_TEMP_T_SENSOR,
 	SENSOR_TEMP_VRM,
+	SENSOR_IN_CPU_CORE,
 	SENSOR_FAN_CPU_OPT,
 	SENSOR_FAN_CHIPSET,
 	SENSOR_FAN_VRM_HS,
@@ -96,6 +98,7 @@ static const struct ec_sensor_info known_ec_sensors[] = {
 	[SENSOR_TEMP_MB]	= EC_SENSOR("Motherboard", hwmon_temp, 1, 0x00, 0x3c),
 	[SENSOR_TEMP_T_SENSOR]	= EC_SENSOR("T_Sensor", hwmon_temp, 1, 0x00, 0x3d),
 	[SENSOR_TEMP_VRM]	= EC_SENSOR("VRM", hwmon_temp, 1, 0x00, 0x3e),
+	[SENSOR_IN_CPU_CORE]	= EC_SENSOR("CPU Core", hwmon_in, 2, 0x00, 0xa2),
 	[SENSOR_FAN_CPU_OPT]	= EC_SENSOR("CPU_Opt", hwmon_fan, 2, 0x00, 0xb0),
 	[SENSOR_FAN_VRM_HS]	= EC_SENSOR("VRM HS", hwmon_fan, 2, 0x00, 0xb2),
 	[SENSOR_FAN_CHIPSET]	= EC_SENSOR("Chipset", hwmon_fan, 2, 0x00, 0xb4),
@@ -124,6 +127,7 @@ static struct asus_wmi_data sensors_board_PW_X570_A = {
 		SENSOR_TEMP_CHIPSET, SENSOR_TEMP_CPU, SENSOR_TEMP_MB, SENSOR_TEMP_VRM,
 		SENSOR_FAN_CHIPSET,
 		SENSOR_CURR_CPU,
+		SENSOR_IN_CPU_CORE,
 		SENSOR_MAX
 	},
 };
@@ -135,6 +139,7 @@ static struct asus_wmi_data sensors_board_R_C8H = {
 		SENSOR_TEMP_WATER_IN, SENSOR_TEMP_WATER_OUT,
 		SENSOR_FAN_CPU_OPT, SENSOR_FAN_CHIPSET, SENSOR_FAN_WATER_FLOW,
 		SENSOR_CURR_CPU,
+		SENSOR_IN_CPU_CORE,
 		SENSOR_MAX
 	},
 };
@@ -147,6 +152,7 @@ static struct asus_wmi_data sensors_board_R_C8DH = {
 		SENSOR_TEMP_WATER_IN, SENSOR_TEMP_WATER_OUT,
 		SENSOR_FAN_CPU_OPT, SENSOR_FAN_WATER_FLOW,
 		SENSOR_CURR_CPU,
+		SENSOR_IN_CPU_CORE,
 		SENSOR_MAX
 	},
 };
@@ -158,6 +164,7 @@ static struct asus_wmi_data sensors_board_R_C8F = {
 		SENSOR_TEMP_T_SENSOR, SENSOR_TEMP_VRM,
 		SENSOR_FAN_CPU_OPT, SENSOR_FAN_CHIPSET,
 		SENSOR_CURR_CPU,
+		SENSOR_IN_CPU_CORE,
 		SENSOR_MAX
 	},
 };
@@ -177,6 +184,7 @@ static struct asus_wmi_data sensors_board_RS_B550_I_G = {
 		SENSOR_TEMP_T_SENSOR, SENSOR_TEMP_VRM,
 		SENSOR_FAN_VRM_HS,
 		SENSOR_CURR_CPU,
+		SENSOR_IN_CPU_CORE,
 		SENSOR_MAX
 	},
 };
@@ -187,6 +195,7 @@ static struct asus_wmi_data sensors_board_RS_X570_E_G = {
 		SENSOR_TEMP_T_SENSOR, SENSOR_TEMP_VRM,
 		SENSOR_FAN_CHIPSET,
 		SENSOR_CURR_CPU,
+		SENSOR_IN_CPU_CORE,
 		SENSOR_MAX
 	},
 };
@@ -375,7 +384,6 @@ static long asus_wmi_ec_scale_sensor_value(long value, int data_type)
 	switch (data_type) {
 	case hwmon_curr:
 	case hwmon_temp:
-	case hwmon_in:
 		return value * MILLI;
 	default:
 		return value;
