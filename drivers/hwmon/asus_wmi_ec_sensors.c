@@ -200,6 +200,26 @@ static struct asus_wmi_data sensors_board_RS_X570_E_G = {
 	},
 };
 
+static struct asus_wmi_data sensors_board_RS_X570_F_G = {
+	.known_board_sensors = {
+		SENSOR_TEMP_CHIPSET, SENSOR_TEMP_CPU, SENSOR_TEMP_MB,
+		SENSOR_TEMP_T_SENSOR,
+		SENSOR_FAN_CHIPSET,
+		SENSOR_MAX
+	},
+};
+
+static struct asus_wmi_data sensors_board_RS_X570_I_G = {
+	.known_board_sensors = {
+		SENSOR_TEMP_T_SENSOR,
+		SENSOR_FAN_VRM_HS,
+		SENSOR_FAN_CHIPSET,
+		SENSOR_CURR_CPU,
+		SENSOR_IN_CPU_CORE,
+		SENSOR_MAX
+	},
+};
+
 #define DMI_EXACT_MATCH_ASUS_BOARD_NAME(name, sensors) {			\
 	.matches = {								\
 		DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "ASUSTeK COMPUTER INC."),	\
@@ -217,6 +237,8 @@ static const struct dmi_system_id asus_wmi_ec_dmi_table[] = {
 	DMI_EXACT_MATCH_ASUS_BOARD_NAME("ROG STRIX B550-E GAMING", &sensors_board_RS_B550_E_G),
 	DMI_EXACT_MATCH_ASUS_BOARD_NAME("ROG STRIX B550-I GAMING", &sensors_board_RS_B550_I_G),
 	DMI_EXACT_MATCH_ASUS_BOARD_NAME("ROG STRIX X570-E GAMING", &sensors_board_RS_X570_E_G),
+	DMI_EXACT_MATCH_ASUS_BOARD_NAME("ROG STRIX X570-F GAMING", &sensors_board_RS_X570_F_G),
+	DMI_EXACT_MATCH_ASUS_BOARD_NAME("ROG STRIX X570-I GAMING", &sensors_board_RS_X570_I_G),
 	{}
 };
 MODULE_DEVICE_TABLE(dmi, asus_wmi_ec_dmi_table);
