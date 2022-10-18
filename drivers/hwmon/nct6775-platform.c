@@ -21,7 +21,7 @@
 
 #include "nct6775.h"
 
-enum sensor_access { access_direct, access_asuswmi };
+enum sensor_access { access_direct, access_asuswmi, access_asusacpi };
 
 static const char * const nct6775_sio_names[] __initconst = {
 	"NCT6106D",
@@ -36,6 +36,7 @@ static const char * const nct6775_sio_names[] __initconst = {
 	"NCT6796D",
 	"NCT6797D",
 	"NCT6798D",
+	"NCT6799D",
 };
 
 static unsigned short force_id;
@@ -86,6 +87,7 @@ MODULE_PARM_DESC(fan_debounce, "Enable debouncing for fan RPM signal");
 #define SIO_NCT6796_ID		0xd420
 #define SIO_NCT6797_ID		0xd450
 #define SIO_NCT6798_ID		0xd428
+#define SIO_NCT6799_ID		0xd800  /* 0xd802 with revision */
 #define SIO_ID_MASK		0xFFF8
 
 /*
@@ -113,6 +115,16 @@ struct nct6775_sio_data {
 #define ASUSWMI_METHODID_RHWM		0x5248574D
 #define ASUSWMI_METHODID_WHWM		0x5748574D
 #define ASUSWMI_UNSUPPORTED_METHOD	0xFFFFFFFE
+/*
+ * Newer boards have an ACPI method not exposed through any WMI GUID
+ * so we call it directly through acpi.
+ * Same METHODID values can be used as with WMI
+ */
+#define ASUSACPI_DEVICE_UID		"AsusMbSwInterface"
+#define ASUSACPI_DEVICE_HID		"PNP0C14"
+#define ASUSACPI_METHOD			"WMBD"
+
+struct acpi_device *asus_acpi_dev;
 
 static int nct6775_asuswmi_evaluate_method(u32 method_id, u8 bank, u8 reg, u8 val, u32 *retval)
 {
@@ -189,6 +201,85 @@ static int superio_wmi_enter(struct nct6775_sio_data *sio_data)
 }
 
 static void superio_wmi_exit(struct nct6775_sio_data *sio_data)
+{
+}
+
+
+static int nct6775_asusacpi_evaluate_method(u32 method_id, u8 bank, u8 reg, u8 val, u32 *retval)
+{
+#if IS_ENABLED(CONFIG_ACPI)
+	u32 args = bank | (reg << 8) | (val << 16);
+	acpi_status status;
+	unsigned long long result;
+	union acpi_object params[3];
+	struct acpi_object_list input;
+	acpi_handle handle = acpi_device_handle(asus_acpi_dev);
+
+	params[0].type = ACPI_TYPE_INTEGER;
+	params[0].integer.value = 0;
+	params[1].type = ACPI_TYPE_INTEGER;
+	params[1].integer.value = method_id;
+	params[2].type = ACPI_TYPE_BUFFER;
+	params[2].buffer.length = sizeof(args);
+	params[2].buffer.pointer = (void*)&args;
+	input.count = 3;
+	input.pointer = params;
+
+	status = acpi_evaluate_integer(handle, ASUSACPI_METHOD, &input, &result);
+	if (ACPI_FAILURE(status))
+		return -EIO;
+
+	if (retval)
+		*retval = (u32)result & 0xFFFFFFFF;
+
+	return 0;
+#else
+	return -EOPNOTSUPP;
+#endif
+}
+
+static inline int nct6775_asusacpi_write(u8 bank, u8 reg, u8 val)
+{
+	return nct6775_asusacpi_evaluate_method(ASUSWMI_METHODID_WHWM, bank,
+					      reg, val, NULL);
+}
+
+static inline int nct6775_asusacpi_read(u8 bank, u8 reg, u8 *val)
+{
+	u32 ret, tmp = 0;
+
+	ret = nct6775_asusacpi_evaluate_method(ASUSWMI_METHODID_RHWM, bank,
+					      reg, 0, &tmp);
+	*val = tmp;
+	return ret;
+}
+
+static int superio_acpi_inb(struct nct6775_sio_data *sio_data, int reg)
+{
+	int tmp = 0;
+
+	nct6775_asusacpi_evaluate_method(ASUSWMI_METHODID_RSIO, sio_data->ld,
+					reg, 0, &tmp);
+	return tmp;
+}
+
+static void superio_acpi_outb(struct nct6775_sio_data *sio_data, int reg, int val)
+{
+	nct6775_asusacpi_evaluate_method(ASUSWMI_METHODID_WSIO, sio_data->ld,
+					reg, val, NULL);
+}
+
+static void superio_acpi_select(struct nct6775_sio_data *sio_data, int ld)
+{
+	sio_data->ld = ld;
+}
+
+static int superio_acpi_enter(struct nct6775_sio_data *sio_data)
+{
+	return 0;
+}
+
+static void superio_acpi_exit(struct nct6775_sio_data *sio_data)
 {
 }
 
@@ -289,6 +380,58 @@ static int nct6775_wmi_reg_write(void *ctx, unsigned int reg, unsigned int value
 		res = nct6775_asuswmi_write(data->bank, (reg & 0xff) + 1, value);
 	} else {
 		res = nct6775_asuswmi_write(data->bank, reg & 0xff, value);
+	}
+
+	return res;
+}
+
+static inline void nct6775_acpi_set_bank(struct nct6775_data *data, u16 reg)
+{
+	u8 bank = reg >> 8;
+
+	data->bank = bank;
+}
+
+static int nct6775_acpi_reg_read(void *ctx, unsigned int reg, unsigned int *val)
+{
+	struct nct6775_data *data = ctx;
+	int err, word_sized = nct6775_reg_is_word_sized(data, reg);
+	u8 tmp = 0;
+	u16 res;
+
+	nct6775_acpi_set_bank(data, reg);
+
+	err = nct6775_asusacpi_read(data->bank, reg & 0xff, &tmp);
+	if (err)
+		return err;
+
+	res = tmp;
+	if (word_sized) {
+		err = nct6775_asusacpi_read(data->bank, (reg & 0xff) + 1, &tmp);
+		if (err)
+			return err;
+
+		res = (res << 8) + tmp;
+	}
+	*val = res;
+	return 0;
+}
+
+static int nct6775_acpi_reg_write(void *ctx, unsigned int reg, unsigned int value)
+{
+	struct nct6775_data *data = ctx;
+	int res, word_sized = nct6775_reg_is_word_sized(data, reg);
+
+	nct6775_acpi_set_bank(data, reg);
+
+	if (word_sized) {
+		res = nct6775_asusacpi_write(data->bank, reg & 0xff, value >> 8);
+		if (res)
+			return res;
+
+		res = nct6775_asusacpi_write(data->bank, (reg & 0xff) + 1, value);
+	} else {
+		res = nct6775_asusacpi_write(data->bank, reg & 0xff, value);
 	}
 
 	return res;
@@ -408,7 +551,7 @@ static int __maybe_unused nct6775_resume(struct device *dev)
 	if (data->kind == nct6791 || data->kind == nct6792 ||
 	    data->kind == nct6793 || data->kind == nct6795 ||
 	    data->kind == nct6796 || data->kind == nct6797 ||
-	    data->kind == nct6798)
+	    data->kind == nct6798 || data->kind == nct6799)
 		nct6791_enable_io_mapping(sio_data);
 
 	sio_data->sio_exit(sio_data);
@@ -555,7 +698,7 @@ nct6775_check_fan_inputs(struct nct6775_data *data, struct nct6775_sio_data *sio
 	} else {
 		/*
 		 * NCT6779D, NCT6791D, NCT6792D, NCT6793D, NCT6795D, NCT6796D,
-		 * NCT6797D, NCT6798D
+		 * NCT6797D, NCT6798D, NCT6799D
 		 */
 		int cr1a = sio_data->sio_inb(sio_data, 0x1a);
 		int cr1b = sio_data->sio_inb(sio_data, 0x1b);
@@ -658,6 +801,23 @@ nct6775_check_fan_inputs(struct nct6775_data *data, struct nct6775_sio_data *sio
 			pwm7pin = cr1d & BIT(4);
 			break;
 		case nct6798:
+			fan6pin = !(cr1b & BIT(0)) && (cre0 & BIT(3));
+			fan6pin |= cr2a & BIT(4);
+			fan6pin |= creb & BIT(5);
+
+			fan7pin = cr1b & BIT(5);
+			fan7pin |= !(cr2b & BIT(2));
+			fan7pin |= creb & BIT(3);
+
+			pwm6pin = !(cr1b & BIT(0)) && (cre0 & BIT(4));
+			pwm6pin |= !(cred & BIT(2)) && (cr2a & BIT(3));
+			pwm6pin |= (creb & BIT(4)) && !(cr2a & BIT(0));
+
+			pwm7pin = !(cr1d & (BIT(2) | BIT(3)));
+			pwm7pin |= cr2d & BIT(7);
+			pwm7pin |= creb & BIT(2);
+			break;
+		case nct6799:
 			fan6pin = !(cr1b & BIT(0)) && (cre0 & BIT(3));
 			fan6pin |= cr2a & BIT(4);
 			fan6pin |= creb & BIT(5);
@@ -828,6 +988,7 @@ static int nct6775_platform_probe_init(struct nct6775_data *data)
 	case nct6796:
 	case nct6797:
 	case nct6798:
+	case nct6799:
 		break;
 	}
 
@@ -866,6 +1027,7 @@ static int nct6775_platform_probe_init(struct nct6775_data *data)
 		case nct6796:
 		case nct6797:
 		case nct6798:
+		case nct6799:
 			tmp |= 0x7e;
 			break;
 		}
@@ -895,6 +1057,13 @@ static const struct regmap_config nct6775_wmi_regmap_config = {
 	.reg_write = nct6775_wmi_reg_write,
 };
 
+static const struct regmap_config nct6775_acpi_regmap_config = {
+	.reg_bits = 16,
+	.val_bits = 16,
+	.reg_read = nct6775_acpi_reg_read,
+	.reg_write = nct6775_acpi_reg_write,
+};
+
 static int nct6775_platform_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -919,8 +1088,12 @@ static int nct6775_platform_probe(struct platform_device *pdev)
 	if (sio_data->access == access_direct) {
 		data->addr = res->start;
 		regmapcfg = &nct6775_regmap_config;
-	} else {
+	} else if (sio_data->access == access_asuswmi) {
 		regmapcfg = &nct6775_wmi_regmap_config;
+	} else if (sio_data->access == access_asusacpi) {
+		regmapcfg = &nct6775_acpi_regmap_config;
+	} else {
+		return -ENODEV;
 	}
 
 	platform_set_drvdata(pdev, data);
@@ -995,6 +1168,9 @@ static int __init nct6775_find(int sioaddr, struct nct6775_sio_data *sio_data)
 	case SIO_NCT6798_ID:
 		sio_data->kind = nct6798;
 		break;
+	case SIO_NCT6799_ID:
+		sio_data->kind = nct6799;
+		break;
 	default:
 		if (val != 0xffff)
 			pr_debug("unsupported chip ID: 0x%04x\n", val);
@@ -1023,7 +1199,7 @@ static int __init nct6775_find(int sioaddr, struct nct6775_sio_data *sio_data)
 	if (sio_data->kind == nct6791 || sio_data->kind == nct6792 ||
 	    sio_data->kind == nct6793 || sio_data->kind == nct6795 ||
 	    sio_data->kind == nct6796 || sio_data->kind == nct6797 ||
-	    sio_data->kind == nct6798)
+	    sio_data->kind == nct6798 || sio_data->kind == nct6799)
 		nct6791_enable_io_mapping(sio_data);
 
 	sio_data->sio_exit(sio_data);
@@ -1092,6 +1268,66 @@ static const char * const asus_wmi_boards[] = {
 	"TUF GAMING Z490-PLUS (WI-FI)",
 };
 
+static const char * const asus_acpi_boards[] = {
+	"ROG STRIX X670E-I GAMING WIFI",
+};
+/*
+ * Callback for acpi_bus_for_each_dev() to find the
+ * right device by _UID and _HID and stop.
+ * return is an error to exit the loop
+ */
+static int nct6775_find_asus_acpi(struct device *dev, void *data)
+{
+	struct acpi_device *adev = to_acpi_device(dev);
+	const char *uid = acpi_device_uid(adev);
+	const char *hid = acpi_device_hid(adev);
+
+	if (uid && !strcmp(uid, ASUSACPI_DEVICE_UID) &&
+		hid && !strcmp(hid, ASUSACPI_DEVICE_HID)) {
+		asus_acpi_dev = adev;
+		return -EEXIST;
+	}
+
+	return 0;
+}
+
+static enum sensor_access nct6775_determine_access(const char *board_name)
+{
+	int ret;
+	u8 tmp;
+	enum sensor_access access = access_direct;
+
+	ret = match_string(asus_wmi_boards, ARRAY_SIZE(asus_wmi_boards),
+				   board_name);
+	if (ret >= 0) {
+		/* if reading chip id via WMI succeeds, use WMI */
+		if (!nct6775_asuswmi_read(0, NCT6775_PORT_CHIPID, &tmp) && tmp) {
+			pr_info("Using Asus WMI to access %#x chip.\n", tmp);
+			return access_asuswmi;
+		} else {
+			pr_err("Can't read ChipID by Asus WMI.\n");
+		}
+	}
+
+	/* not WMI, try to find the ACPI device/method */
+	ret = match_string(asus_acpi_boards, ARRAY_SIZE(asus_acpi_boards),
+			board_name);
+	if (ret >= 0) {
+		acpi_bus_for_each_dev(nct6775_find_asus_acpi, &asus_acpi_dev);
+		if (!asus_acpi_dev)
+			return access;
+		/* if reading chip id via ACPI succeeds, use ACPI */
+		if (!nct6775_asusacpi_read(0, NCT6775_PORT_CHIPID, &tmp) && tmp) {
+			pr_info("Using Asus ACPI to access %#x chip.\n", tmp);
+			return access_asusacpi;
+		} else {
+			pr_err("Can't read ChipID by Asus ACPI.\n");
+		}
+	}
+
+	return access;
+}
+
 static int __init sensors_nct6775_platform_init(void)
 {
 	int i, err;
@@ -1102,7 +1338,6 @@ static int __init sensors_nct6775_platform_init(void)
 	int sioaddr[2] = { 0x2e, 0x4e };
 	enum sensor_access access = access_direct;
 	const char *board_vendor, *board_name;
-	u8 tmp;
 
 	err = platform_driver_register(&nct6775_driver);
 	if (err)
@@ -1111,20 +1346,10 @@ static int __init sensors_nct6775_platform_init(void)
 	board_vendor = dmi_get_system_info(DMI_BOARD_VENDOR);
 	board_name = dmi_get_system_info(DMI_BOARD_NAME);
 
+	/* check if the board has WMI/ACPI access to the device */
 	if (board_name && board_vendor &&
-	    !strcmp(board_vendor, "ASUSTeK COMPUTER INC.")) {
-		err = match_string(asus_wmi_boards, ARRAY_SIZE(asus_wmi_boards),
-				   board_name);
-		if (err >= 0) {
-			/* if reading chip id via WMI succeeds, use WMI */
-			if (!nct6775_asuswmi_read(0, NCT6775_PORT_CHIPID, &tmp) && tmp) {
-				pr_info("Using Asus WMI to access %#x chip.\n", tmp);
-				access = access_asuswmi;
-			} else {
-				pr_err("Can't read ChipID by Asus WMI.\n");
-			}
-		}
-	}
+	    !strcmp(board_vendor, "ASUSTeK COMPUTER INC."))
+		access = nct6775_determine_access(board_name);
 
 	/*
 	 * initialize sio_data->kind and sio_data->sioreg.
@@ -1154,6 +1379,12 @@ static int __init sensors_nct6775_platform_init(void)
 			sio_data.sio_select = superio_wmi_select;
 			sio_data.sio_enter = superio_wmi_enter;
 			sio_data.sio_exit = superio_wmi_exit;
+		}else if (access == access_asusacpi) {
+			sio_data.sio_outb = superio_acpi_outb;
+			sio_data.sio_inb = superio_acpi_inb;
+			sio_data.sio_select = superio_acpi_select;
+			sio_data.sio_enter = superio_acpi_enter;
+			sio_data.sio_exit = superio_acpi_exit;
 		}
 
 		pdev[i] = platform_device_alloc(DRVNAME, address);

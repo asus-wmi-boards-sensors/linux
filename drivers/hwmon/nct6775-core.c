@@ -33,6 +33,7 @@
  *                                           (0xd451)
  * nct6798d    14      7       7       2+6    0xd428 0xc1    0x5ca3
  *                                           (0xd429)
+ * nct6799d    14      7       7       2+6    0xd802 0xc1    0x5ca3
  *
  * #temp lists the number of monitored temperature sources (first value) plus
  * the number of directly connectable temperature sensors (second value).
@@ -73,6 +74,7 @@ static const char * const nct6775_device_names[] = {
 	"nct6796",
 	"nct6797",
 	"nct6798",
+	"nct6799",
 };
 
 /* Common and NCT6775 specific data */
@@ -1109,6 +1111,7 @@ bool nct6775_reg_is_word_sized(struct nct6775_data *data, u16 reg)
 	case nct6796:
 	case nct6797:
 	case nct6798:
+	case nct6799:
 		return reg == 0x150 || reg == 0x153 || reg == 0x155 ||
 		  (reg & 0xfff0) == 0x4c0 ||
 		  reg == 0x402 ||
@@ -1462,6 +1465,7 @@ static int nct6775_update_pwm_limits(struct device *dev)
 		case nct6796:
 		case nct6797:
 		case nct6798:
+		case nct6799:
 			err = nct6775_read_value(data, data->REG_CRITICAL_PWM_ENABLE[i], &reg);
 			if (err)
 				return err;
@@ -3109,6 +3113,7 @@ store_auto_pwm(struct device *dev, struct device_attribute *attr,
 		case nct6796:
 		case nct6797:
 		case nct6798:
+		case nct6799:
 			err = nct6775_write_value(data, data->REG_CRITICAL_PWM[nr], val);
 			if (err)
 				break;
@@ -3807,6 +3812,7 @@ int nct6775_probe(struct device *dev, struct nct6775_data *data,
 	case nct6796:
 	case nct6797:
 	case nct6798:
+	case nct6799:
 		data->in_num = 15;
 		data->pwm_num = (data->kind == nct6796 ||
 				 data->kind == nct6797 ||
@@ -3855,6 +3861,7 @@ int nct6775_probe(struct device *dev, struct nct6775_data *data,
 			data->virt_temp_mask = NCT6796_VIRT_TEMP_MASK;
 			break;
 		case nct6798:
+		case nct6799:
 			data->temp_label = nct6798_temp_label;
 			data->temp_mask = NCT6798_TEMP_MASK;
 			data->virt_temp_mask = NCT6798_VIRT_TEMP_MASK;
@@ -3918,6 +3925,7 @@ int nct6775_probe(struct device *dev, struct nct6775_data *data,
 		case nct6796:
 		case nct6797:
 		case nct6798:
+		case nct6799:
 			data->REG_TSI_TEMP = NCT6796_REG_TSI_TEMP;
 			num_reg_tsi_temp = ARRAY_SIZE(NCT6796_REG_TSI_TEMP);
 			break;
